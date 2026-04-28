@@ -22,6 +22,17 @@ type SearchMoviesResponse = {
   results: TmdbMovie[];
 };
 
+export type RecommendedMovie = {
+  id: number;
+  title: string;
+  overview: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  releaseDate: string;
+  voteAverage: number;
+  genreIds: number[];
+};
+
 function ensureTmdbApiKey() {
   if (!TMDB_API_KEY) {
     throw new AppError(
@@ -35,13 +46,21 @@ function ensureTmdbApiKey() {
 const MOVIE_GENRE_MAP: Record<string, number> = {
   action: 28,
   adventure: 12,
+  animation: 16,
   comedy: 35,
+  crime: 80,
+  documentary: 99,
   drama: 18,
+  family: 10751,
   fantasy: 14,
+  history: 36,
   horror: 27,
+  music: 10402,
   mystery: 9648,
+  romance: 10749,
   "science-fiction": 878,
   thriller: 53,
+  war: 10752,
   western: 37,
 };
 
@@ -51,7 +70,7 @@ function mapGenresToIds(genres: string[]) {
     .filter((id): id is number => Boolean(id));
 }
 
-function normalizeMovie(movie: TmdbMovie) {
+function normalizeMovie(movie: TmdbMovie): RecommendedMovie {
   return {
     id: movie.id,
     title: movie.title,
@@ -76,7 +95,9 @@ function uniqueById<T extends { id: number }>(items: T[]) {
   return Array.from(map.values());
 }
 
-export async function discoverMoviesByGenres(genres: string[]) {
+export async function discoverMoviesByGenres(
+  genres: string[],
+): Promise<RecommendedMovie[]> {
   ensureTmdbApiKey();
 
   const genreIds = mapGenresToIds(genres);
@@ -92,8 +113,15 @@ export async function discoverMoviesByGenres(genres: string[]) {
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("include_video", "false");
   url.searchParams.set("page", "1");
-  url.searchParams.set("with_genres", genreIds.join(","));
-  url.searchParams.set("vote_count.gte", "200");
+
+  // IMPORTANTE:
+  // pipe = OR
+  // vírgula = AND
+  // Para recomendação, OR faz bem mais sentido.
+  url.searchParams.set("with_genres", genreIds.join("|"));
+
+  // Menos restritivo para trazer mais resultados
+  url.searchParams.set("vote_count.gte", "50");
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -112,16 +140,22 @@ export async function discoverMoviesByGenres(genres: string[]) {
   return data.results.map(normalizeMovie);
 }
 
-export async function searchMoviesByTerms(searchTerms: string[]) {
+export async function searchMoviesByTerms(
+  searchTerms: string[],
+): Promise<RecommendedMovie[]> {
   ensureTmdbApiKey();
 
-  const results: ReturnType<typeof normalizeMovie>[] = [];
+  const results: RecommendedMovie[] = [];
 
-  for (const term of searchTerms.slice(0, 3)) {
+  for (const term of searchTerms.slice(0, 4)) {
+    const cleanedTerm = term.trim();
+
+    if (!cleanedTerm) continue;
+
     const url = new URL(`${TMDB_BASE_URL}/search/movie`);
     url.searchParams.set("api_key", TMDB_API_KEY as string);
     url.searchParams.set("language", "en-US");
-    url.searchParams.set("query", term);
+    url.searchParams.set("query", cleanedTerm);
     url.searchParams.set("include_adult", "false");
     url.searchParams.set("page", "1");
 
@@ -148,13 +182,23 @@ export async function searchMoviesByTerms(searchTerms: string[]) {
 export async function getRecommendedMovies(params: {
   movieGenres: string[];
   searchTerms: string[];
-}) {
+}): Promise<RecommendedMovie[]> {
   const [genreMovies, searchMovies] = await Promise.all([
     discoverMoviesByGenres(params.movieGenres),
     searchMoviesByTerms(params.searchTerms),
   ]);
 
-  const merged = uniqueById([...genreMovies, ...searchMovies]);
+  // Prioriza os resultados por busca textual primeiro
+  const merged = uniqueById([...searchMovies, ...genreMovies]);
 
-  return merged.sort((a, b) => b.voteAverage - a.voteAverage).slice(0, 10);
+  return merged
+    .filter((movie) => movie.voteAverage > 0)
+    .sort((a, b) => {
+      if (b.voteAverage !== a.voteAverage) {
+        return b.voteAverage - a.voteAverage;
+      }
+
+      return (b.releaseDate || "").localeCompare(a.releaseDate || "");
+    })
+    .slice(0, 12);
 }

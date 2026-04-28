@@ -20,6 +20,12 @@ type SourceGame = {
   weight: number;
 };
 
+type Signals = {
+  movieThemes: string[];
+  movieGenres: string[];
+  searchTerms: string[];
+};
+
 type RecommendationResponse = {
   success: boolean;
   data?: {
@@ -31,11 +37,21 @@ type RecommendationResponse = {
       topGenres: string[];
       topCategories: string[];
     };
-    signals: {
-      movieThemes: string[];
-      movieGenres: string[];
-      searchTerms: string[];
-    };
+    signals: Signals;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+};
+
+type CustomRecommendationResponse = {
+  success: boolean;
+  data?: {
+    movieThemes: string[];
+    movieGenres: string[];
+    searchTerms: string[];
+    recommendations: Movie[];
   };
   error?: {
     code: string;
@@ -66,15 +82,52 @@ function LabelGroup({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function SignalEditor({
+  title,
+  type,
+  items,
+  onRemove,
+}: {
+  title: string;
+  type: keyof Signals;
+  items: string[];
+  onRemove: (type: keyof Signals, value: string) => void;
+}) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold text-zinc-400">{title}</h3>
+
+      {items.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onRemove(type, item)}
+              className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-sm transition hover:border-red-400/40 hover:bg-red-500/10"
+            >
+              {item} ×
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-zinc-500">Nenhum sinal restante.</p>
+      )}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [steamId, setSteamId] = useState("76561198283484549");
   const [mode, setMode] = useState<"recent" | "top-played">("top-played");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RecommendationResponse | null>(null);
+  const [selectedSignals, setSelectedSignals] = useState<Signals | null>(null);
 
   async function handleSearch() {
     setLoading(true);
     setResult(null);
+    setSelectedSignals(null);
 
     try {
       const response = await fetch(
@@ -83,6 +136,10 @@ export default function HomePage() {
 
       const data = (await response.json()) as RecommendationResponse;
       setResult(data);
+
+      if (data.success && data.data) {
+        setSelectedSignals(data.data.signals);
+      }
     } catch {
       setResult({
         success: false,
@@ -96,11 +153,103 @@ export default function HomePage() {
     }
   }
 
+  function removeSignal(type: keyof Signals, value: string) {
+    setSelectedSignals((prev) => {
+      if (!prev) return prev;
+
+      const next: Signals = {
+        ...prev,
+        [type]: prev[type].filter((item) => item !== value),
+      };
+
+      if (type === "movieThemes") {
+        next.searchTerms = next.searchTerms.filter(
+          (term) => !term.toLowerCase().includes(value.toLowerCase()),
+        );
+      }
+
+      return next;
+    });
+  }
+
+  async function handleApplySignals() {
+    if (!selectedSignals) return;
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/recommend/custom", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(selectedSignals),
+      });
+
+      const data = (await response.json()) as CustomRecommendationResponse;
+
+      if (!response.ok || !data.success || !data.data) {
+        setResult((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            success: false,
+            error: data.error ?? {
+              code: "CUSTOM_RECOMMEND_FAILED",
+              message: "Não foi possível atualizar as recomendações.",
+            },
+          };
+        });
+
+        return;
+      }
+
+      const customData = data.data;
+
+      setResult((prev) => {
+        if (!prev || !prev.data) return prev;
+
+        return {
+          ...prev,
+          success: true,
+          error: undefined,
+          data: {
+            ...prev.data,
+            signals: {
+              movieThemes: customData.movieThemes,
+              movieGenres: customData.movieGenres,
+              searchTerms: customData.searchTerms,
+            },
+            recommendations: customData.recommendations,
+          },
+        };
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar recomendações:", error);
+
+      setResult((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          success: false,
+          error: {
+            code: "CUSTOM_REQUEST_FAILED",
+            message: "Não foi possível atualizar as recomendações.",
+          },
+        };
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-10 text-white">
       <div className="mx-auto max-w-6xl">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold">FromPlayScreen</h1>
+          <h1 className="text-4xl font-bold">PlayFlix</h1>
           <p className="mt-2 text-zinc-400">
             Descubra filmes com base nos seus jogos da Steam.
           </p>
@@ -127,6 +276,7 @@ export default function HomePage() {
             </select>
 
             <button
+              type="button"
               onClick={handleSearch}
               disabled={loading}
               className="rounded-xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
@@ -163,6 +313,58 @@ export default function HomePage() {
               </div>
             </section>
 
+            {selectedSignals && (
+              <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <h2 className="text-xl font-semibold">
+                  Editar sinais de filme
+                </h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Remova os sinais que não fazem sentido para refinar as
+                  recomendações.
+                </p>
+
+                <div className="mt-5 space-y-5">
+                  <SignalEditor
+                    title="Temas"
+                    type="movieThemes"
+                    items={selectedSignals.movieThemes}
+                    onRemove={removeSignal}
+                  />
+
+                  <SignalEditor
+                    title="Gêneros"
+                    type="movieGenres"
+                    items={selectedSignals.movieGenres}
+                    onRemove={removeSignal}
+                  />
+
+                  <SignalEditor
+                    title="Buscas"
+                    type="searchTerms"
+                    items={selectedSignals.searchTerms}
+                    onRemove={removeSignal}
+                  />
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log(
+                        "Atualizando recomendações com sinais:",
+                        selectedSignals,
+                      );
+                      void handleApplySignals();
+                    }}
+                    disabled={loading || !selectedSignals}
+                    className="rounded-xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
+                  >
+                    {loading ? "Atualizando..." : "Atualizar recomendações"}
+                  </button>
+                </div>
+              </section>
+            )}
+
             <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
               <h2 className="text-xl font-semibold">Jogos analisados</h2>
 
@@ -179,7 +381,7 @@ export default function HomePage() {
                       </p>
 
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {game.tags.slice(0, 6).map((tag) => (
+                        {game.tags.slice(0, 8).map((tag) => (
                           <span
                             key={tag}
                             className="rounded-full border border-white/10 px-2 py-1 text-xs text-zinc-300"
