@@ -5,6 +5,7 @@ type CustomRecommendBody = {
   movieThemes: string[];
   movieGenres: string[];
   searchTerms: string[];
+  keywordCandidates?: string[];
 };
 
 function ensureStringArray(value: unknown): string[] {
@@ -23,11 +24,15 @@ export async function POST(request: Request) {
     const movieThemes = ensureStringArray(body.movieThemes);
     const movieGenres = ensureStringArray(body.movieGenres);
     const searchTerms = ensureStringArray(body.searchTerms);
+    const keywordCandidates = ensureStringArray(
+      body.keywordCandidates ?? body.movieThemes,
+    );
 
     if (
       movieThemes.length === 0 &&
       movieGenres.length === 0 &&
-      searchTerms.length === 0
+      searchTerms.length === 0 &&
+      keywordCandidates.length === 0
     ) {
       return Response.json(
         {
@@ -44,6 +49,7 @@ export async function POST(request: Request) {
     const recommendations = await getRecommendedMovies({
       movieGenres,
       searchTerms,
+      keywordCandidates,
     });
 
     return Response.json({
@@ -52,6 +58,7 @@ export async function POST(request: Request) {
         movieThemes,
         movieGenres,
         searchTerms,
+        keywordCandidates,
         recommendations,
       },
     });

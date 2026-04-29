@@ -3,6 +3,7 @@ import type { NormalizedSteamGame } from "@/types/steam";
 
 export type WeightedGameProfile = GameProfile & {
   weight: number;
+  relevanceScore: number;
 };
 
 export type UserGameProfile = {
@@ -34,6 +35,17 @@ const IRRELEVANT_TOP_GENRES = new Set([
   "video production",
 ]);
 
+const IRRELEVANT_GAME_NAME_TERMS = [
+  "soundtrack",
+  "demo",
+  "test server",
+  "dedicated server",
+  "benchmark",
+  "editor",
+  "tool",
+  "server",
+];
+
 function addWeightedValues(
   map: Map<string, number>,
   values: string[],
@@ -51,34 +63,78 @@ function getTopKeys(map: Map<string, number>, limit = 10) {
     .map(([key]) => key);
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeMinutesWeight(minutes: number, maxWeight: number) {
+  if (minutes <= 0) return 1;
+
+  // suaviza diferenças absurdas
+  // ex.: 10000 min não destrói completamente o resto
+  const scaled = Math.sqrt(minutes);
+
+  return clamp(Math.round(scaled), 1, maxWeight);
+}
+
 function getGameWeight(game: NormalizedSteamGame) {
   if (
     typeof game.minutesLast2Weeks === "number" &&
     game.minutesLast2Weeks > 0
   ) {
-    return game.minutesLast2Weeks;
+    return normalizeMinutesWeight(game.minutesLast2Weeks, 40);
   }
 
-  return game.minutesTotal > 0 ? game.minutesTotal : 1;
+  return normalizeMinutesWeight(game.minutesTotal, 120);
 }
 
 function filterRelevantGenres(genres: string[]) {
   return genres.filter((genre) => !IRRELEVANT_TOP_GENRES.has(genre));
 }
 
+function isRelevantGameName(name: string) {
+  const normalized = name.trim().toLowerCase();
+
+  return !IRRELEVANT_GAME_NAME_TERMS.some((term) => normalized.includes(term));
+}
+
+function getThemeRichnessScore(profile: GameProfile) {
+  const tagScore = profile.tags.length * 4;
+  const genreScore = profile.genres.length * 2;
+  const categoryScore = profile.categories.length;
+
+  const shortDescriptionScore =
+    profile.shortDescription && profile.shortDescription.length > 40 ? 3 : 0;
+
+  return tagScore + genreScore + categoryScore + shortDescriptionScore;
+}
+
+function getRelevanceScore(profile: GameProfile, weight: number) {
+  return weight * 3 + getThemeRichnessScore(profile);
+}
+
 export async function buildUserGameProfile(
   games: NormalizedSteamGame[],
 ): Promise<UserGameProfile> {
-  const sourceGames = await Promise.all(
-    games.map(async (game) => {
+  const relevantGames = games.filter((game) => isRelevantGameName(game.name));
+
+  const enrichedGames = await Promise.all(
+    relevantGames.map(async (game) => {
       const profile = await getGameProfile(game.appId);
+      const weight = getGameWeight(game);
+      const relevanceScore = getRelevanceScore(profile, weight);
 
       return {
         ...profile,
-        weight: getGameWeight(game),
+        weight,
+        relevanceScore,
       };
     }),
   );
+
+  const sourceGames = enrichedGames
+    .filter((game) => game.tags.length > 0 || game.genres.length > 0)
+    .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
   const tagsMap = new Map<string, number>();
   const genresMap = new Map<string, number>();
@@ -96,8 +152,8 @@ export async function buildUserGameProfile(
 
   return {
     sourceGames,
-    topTags: getTopKeys(tagsMap, 10),
-    topGenres: getTopKeys(genresMap, 5),
-    topCategories: getTopKeys(categoriesMap, 5),
+    topTags: getTopKeys(tagsMap, 12),
+    topGenres: getTopKeys(genresMap, 6),
+    topCategories: getTopKeys(categoriesMap, 6),
   };
 }

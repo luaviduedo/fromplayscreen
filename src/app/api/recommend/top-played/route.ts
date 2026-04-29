@@ -25,10 +25,15 @@ export async function GET(request: Request) {
       );
     }
 
-    const games = await getTopPlayedGames(parsed.data.steamId, 5);
+    const games = await getTopPlayedGames(parsed.data.steamId, 12);
     const profile = await buildUserGameProfile(games);
     const signals = buildMovieSignals(profile);
-    const recommendations = await getRecommendedMovies(signals);
+
+    const recommendations = await getRecommendedMovies({
+      movieGenres: signals.movieGenres,
+      searchTerms: signals.searchTerms,
+      keywordCandidates: signals.keywordCandidates,
+    });
 
     return Response.json({
       success: true,

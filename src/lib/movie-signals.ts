@@ -4,14 +4,20 @@ export type MovieSignals = {
   movieThemes: string[];
   movieGenres: string[];
   searchTerms: string[];
+  keywordCandidates: string[];
 };
 
-const USEFUL_THEME_TAGS = new Set([
-  // sci-fi / futurista
+type ThemeSignalConfig = {
+  searchTokens: string[];
+  tmdbGenres: string[];
+};
+
+const STRONG_THEME_TAGS = new Set([
   "cyberpunk",
   "sci-fi",
   "science-fiction",
   "futuristic",
+  "cybernetics",
   "space",
   "space-sim",
   "space-combat",
@@ -21,18 +27,22 @@ const USEFUL_THEME_TAGS = new Set([
   "dystopian",
   "post-apocalyptic",
   "time-travel",
+  "steampunk",
+  "dieselpunk",
 
-  // fantasia / medieval
   "fantasy",
   "dark-fantasy",
   "magic",
   "medieval",
   "dragons",
   "mythology",
-  "swordplay",
-  "souls-like",
+  "vampire",
+  "werewolves",
+  "lovecraftian",
+  "supernatural",
+  "demons",
+  "witch",
 
-  // horror / tensão
   "horror",
   "survival-horror",
   "psychological-horror",
@@ -40,261 +50,575 @@ const USEFUL_THEME_TAGS = new Set([
   "thriller",
   "mystery",
   "detective",
+  "investigation",
+  "noir",
   "zombies",
   "survival",
-  "stealth",
-  "atmospheric",
   "dark",
   "gothic",
-  "violent",
+  "gore",
+  "blood",
 
-  // ação / aventura
   "action",
-  "action-rpg",
   "adventure",
-  "exploration",
-  "open-world",
-  "sandbox",
-  "immersive-sim",
-  "parkour",
-  "platformer",
-  "shooter",
-  "third-person-shooter",
-  "first-person-shooter",
-  "hack-and-slash",
-  "beat-em-up",
-
-  // narrativa / drama
-  "story-rich",
-  "choices-matter",
-  "emotional",
-  "cinematic",
-  "drama",
-  "romance",
-  "character-driven",
-
-  // crime / realismo
+  "superhero",
+  "assassin",
+  "pirates",
   "western",
   "crime",
   "heist",
-  "noir",
-  "military",
   "war",
   "historical",
+  "world-war-ii",
+  "world-war-i",
+  "cold-war",
+  "military",
+  "rome",
+  "dino",
+  "dinosaurs",
+  "political",
 
-  // anime / japonês
+  "drama",
+  "romance",
+  "comedy",
+  "satire",
   "anime",
-  "jrpg",
   "martial-arts",
   "samurai",
   "ninja",
-
-  // esportivo / corrida
-  "racing",
-  "sports",
-  "driving",
-
-  // construção de mundo / estratégia temática
-  "city-builder",
-  "colony-sim",
-  "management",
-  "politics",
-  "resource-management",
 ]);
 
 const USEFUL_GENRES = new Set([
   "action",
   "adventure",
-  "rpg",
   "horror",
   "fantasy",
-  "strategy",
-  "simulation",
-  "sports",
-  "racing",
-  "casual",
-  "indie",
-  "massively multiplayer",
+  "documentary",
 ]);
 
-const SIGNAL_TO_MOVIE_GENRES: Record<string, string[]> = {
-  // sci-fi
-  cyberpunk: ["science-fiction", "thriller"],
-  "sci-fi": ["science-fiction"],
-  "science-fiction": ["science-fiction"],
-  futuristic: ["science-fiction"],
-  space: ["science-fiction", "adventure"],
-  "space-sim": ["science-fiction", "adventure"],
-  "space-combat": ["science-fiction", "action"],
-  aliens: ["science-fiction", "horror"],
-  robots: ["science-fiction", "action"],
-  mechs: ["science-fiction", "action"],
-  dystopian: ["science-fiction", "thriller", "drama"],
-  "post-apocalyptic": ["science-fiction", "thriller", "drama"],
-  "time-travel": ["science-fiction", "thriller"],
-
-  // fantasia
-  fantasy: ["fantasy", "adventure"],
-  "dark-fantasy": ["fantasy", "thriller", "drama"],
-  magic: ["fantasy", "adventure"],
-  medieval: ["fantasy", "adventure", "drama"],
-  dragons: ["fantasy", "adventure"],
-  mythology: ["fantasy", "adventure"],
-  swordplay: ["action", "adventure"],
-  "souls-like": ["fantasy", "thriller", "drama"],
-
-  // horror / mistério
-  horror: ["horror", "thriller"],
-  "survival-horror": ["horror", "thriller"],
-  "psychological-horror": ["horror", "thriller"],
-  psychological: ["thriller", "drama"],
-  thriller: ["thriller"],
-  mystery: ["mystery", "thriller"],
-  detective: ["mystery", "thriller", "drama"],
-  zombies: ["horror", "thriller"],
-  survival: ["thriller", "action"],
-  stealth: ["thriller", "action"],
-  atmospheric: ["thriller", "drama"],
-  dark: ["thriller", "drama"],
-  gothic: ["horror", "fantasy"],
-  violent: ["action", "thriller"],
-
-  // ação / aventura
-  action: ["action"],
-  "action-rpg": ["action", "adventure", "fantasy"],
-  adventure: ["adventure"],
-  exploration: ["adventure"],
-  "open-world": ["adventure"],
-  sandbox: ["adventure"],
-  "immersive-sim": ["thriller", "science-fiction"],
-  parkour: ["action", "adventure"],
-  platformer: ["adventure", "family"],
-  shooter: ["action", "thriller"],
-  "third-person-shooter": ["action", "thriller"],
-  "first-person-shooter": ["action", "thriller"],
-  "hack-and-slash": ["action", "fantasy"],
-  "beat-em-up": ["action"],
-
-  // narrativa
-  "story-rich": ["drama"],
-  "choices-matter": ["drama", "thriller"],
-  emotional: ["drama", "romance"],
-  cinematic: ["drama", "adventure"],
-  drama: ["drama"],
-  romance: ["romance", "drama"],
-  "character-driven": ["drama"],
-
-  // crime / guerra / western
-  western: ["western", "drama"],
-  crime: ["crime", "thriller"],
-  heist: ["crime", "thriller", "action"],
-  noir: ["crime", "mystery", "thriller"],
-  military: ["war", "action"],
-  war: ["war", "action", "drama"],
-  historical: ["history", "drama"],
-
-  // anime / jp
-  anime: ["animation", "fantasy", "action"],
-  jrpg: ["fantasy", "adventure", "drama"],
-  "martial-arts": ["action", "drama"],
-  samurai: ["action", "drama", "history"],
-  ninja: ["action", "thriller"],
-
-  // corrida / esportes
-  racing: ["action"],
-  sports: ["drama"],
-  driving: ["action", "thriller"],
-
-  // gestão / política
-  "city-builder": ["drama"],
-  "colony-sim": ["science-fiction", "drama"],
-  management: ["drama"],
-  politics: ["drama", "thriller"],
-  "resource-management": ["drama", "thriller"],
-
-  // genres fallback
-  rpg: ["fantasy", "adventure", "drama"],
-  strategy: ["war", "drama"],
-  simulation: ["drama"],
-  casual: ["comedy", "family"],
-  indie: ["drama"],
-  "massively multiplayer": ["action", "fantasy"],
-};
-
-const IRRELEVANT_FALLBACK_TAGS = new Set([
+const IRRELEVANT_TAGS = new Set([
   "singleplayer",
-  "multi-player",
   "multiplayer",
   "co-op",
   "online-co-op",
-  "online-pvp",
+  "local-co-op",
+  "local-multiplayer",
   "pvp",
+  "online-pvp",
+  "split-screen",
+  "mmo",
+  "mmorpg",
+
   "controller",
   "full-controller-support",
-  "mouse-only",
-  "touch-friendly",
   "steam-achievements",
   "steam-cloud",
   "remote-play-together",
   "family-sharing",
-  "level-editor",
-  "moddable",
+  "steam-deck",
+  "in-app-purchases",
+  "early-access",
+  "free-to-play",
+
+  "first-person",
+  "third-person",
+  "top-down",
+  "isometric",
+  "side-scroller",
+  "2d",
+  "3d",
+  "2.5d",
+  "text-based",
+  "pixel-graphics",
+  "retro",
+  "low-poly",
+  "voxel",
+  "hand-drawn",
+  "cel-shaded",
+  "colorful",
+  "minimalist",
+
+  "difficult",
+  "hard",
+  "tutorial",
+  "replay-value",
+  "short",
+  "fast-paced",
+  "turn-based",
+  "real-time",
+  "procedural-generation",
+  "score-attack",
+  "arcade",
   "character-customization",
+  "crafting",
+  "base-building",
+  "inventory-management",
+  "loot",
+  "multiple-endings",
+  "management",
+  "resource-management",
+  "city-builder",
+  "colony-sim",
+  "sandbox",
+  "platformer",
+  "parkour",
+  "driving",
+  "racing",
+  "sports",
+  "shooter",
+  "strategy",
+  "rogue-like",
+  "choices-matter",
+  "open-world",
+  "exploration",
+  "immersive-sim",
+
+  "masterpiece",
+  "memes",
+  "funny",
   "great-soundtrack",
   "soundtrack",
-  "cinematic", // pode manter se quiser; aqui deixei útil acima, então remova daqui se preferir
+
   "nsfw",
   "nudity",
   "mature",
   "sexual-content",
-  "gore",
+  "hentai",
 ]);
+
+const IRRELEVANT_GENRES = new Set([
+  "free to play",
+  "massively multiplayer",
+  "early access",
+  "sports",
+  "racing",
+  "simulation",
+  "strategy",
+  "casual",
+  "indie",
+  "utilities",
+  "animation & modeling",
+  "design & illustration",
+  "education",
+  "software training",
+  "web publishing",
+  "game development",
+  "photo editing",
+  "audio production",
+  "video production",
+]);
+
+const THEME_SIGNAL_MAP: Record<string, ThemeSignalConfig> = {
+  "sci-fi": {
+    searchTokens: ["sci-fi"],
+    tmdbGenres: ["science-fiction"],
+  },
+  "science-fiction": {
+    searchTokens: ["science-fiction"],
+    tmdbGenres: ["science-fiction"],
+  },
+  futuristic: {
+    searchTokens: ["futuristic"],
+    tmdbGenres: ["science-fiction"],
+  },
+  cybernetics: {
+    searchTokens: ["cybernetics"],
+    tmdbGenres: ["science-fiction", "action"],
+  },
+  cyberpunk: {
+    searchTokens: ["cyberpunk"],
+    tmdbGenres: ["science-fiction", "thriller"],
+  },
+  space: {
+    searchTokens: ["space"],
+    tmdbGenres: ["science-fiction", "adventure"],
+  },
+  "space-sim": {
+    searchTokens: ["space-sim", "space"],
+    tmdbGenres: ["science-fiction", "adventure"],
+  },
+  "space-combat": {
+    searchTokens: ["space-combat", "space"],
+    tmdbGenres: ["action", "science-fiction"],
+  },
+  aliens: {
+    searchTokens: ["aliens"],
+    tmdbGenres: ["science-fiction", "horror"],
+  },
+  robots: {
+    searchTokens: ["robots"],
+    tmdbGenres: ["science-fiction", "action"],
+  },
+  mechs: {
+    searchTokens: ["mechs"],
+    tmdbGenres: ["science-fiction", "action"],
+  },
+  dystopian: {
+    searchTokens: ["dystopian"],
+    tmdbGenres: ["science-fiction", "thriller"],
+  },
+  "post-apocalyptic": {
+    searchTokens: ["post-apocalyptic"],
+    tmdbGenres: ["science-fiction", "thriller"],
+  },
+  "time-travel": {
+    searchTokens: ["time-travel"],
+    tmdbGenres: ["science-fiction", "thriller"],
+  },
+  steampunk: {
+    searchTokens: ["steampunk"],
+    tmdbGenres: ["science-fiction", "fantasy"],
+  },
+  dieselpunk: {
+    searchTokens: ["dieselpunk"],
+    tmdbGenres: ["science-fiction", "action"],
+  },
+
+  fantasy: {
+    searchTokens: ["fantasy"],
+    tmdbGenres: ["fantasy", "adventure"],
+  },
+  "dark-fantasy": {
+    searchTokens: ["dark-fantasy"],
+    tmdbGenres: ["fantasy", "horror", "thriller"],
+  },
+  magic: {
+    searchTokens: ["magic"],
+    tmdbGenres: ["fantasy", "adventure"],
+  },
+  medieval: {
+    searchTokens: ["medieval"],
+    tmdbGenres: ["fantasy", "history"],
+  },
+  dragons: {
+    searchTokens: ["dragons"],
+    tmdbGenres: ["fantasy", "adventure"],
+  },
+  mythology: {
+    searchTokens: ["mythology"],
+    tmdbGenres: ["fantasy", "adventure"],
+  },
+  vampire: {
+    searchTokens: ["vampire"],
+    tmdbGenres: ["horror", "fantasy"],
+  },
+  werewolves: {
+    searchTokens: ["werewolves"],
+    tmdbGenres: ["horror", "fantasy"],
+  },
+  lovecraftian: {
+    searchTokens: ["lovecraftian"],
+    tmdbGenres: ["horror", "mystery"],
+  },
+  supernatural: {
+    searchTokens: ["supernatural"],
+    tmdbGenres: ["horror", "mystery", "fantasy"],
+  },
+  demons: {
+    searchTokens: ["demons"],
+    tmdbGenres: ["horror", "fantasy", "action"],
+  },
+  witch: {
+    searchTokens: ["witch"],
+    tmdbGenres: ["horror", "fantasy"],
+  },
+
+  horror: {
+    searchTokens: ["horror"],
+    tmdbGenres: ["horror", "thriller"],
+  },
+  "survival-horror": {
+    searchTokens: ["survival-horror"],
+    tmdbGenres: ["horror", "thriller"],
+  },
+  "psychological-horror": {
+    searchTokens: ["psychological-horror"],
+    tmdbGenres: ["horror", "thriller"],
+  },
+  psychological: {
+    searchTokens: ["psychological"],
+    tmdbGenres: ["thriller", "drama"],
+  },
+  thriller: {
+    searchTokens: ["thriller"],
+    tmdbGenres: ["thriller"],
+  },
+  mystery: {
+    searchTokens: ["mystery"],
+    tmdbGenres: ["mystery", "thriller"],
+  },
+  detective: {
+    searchTokens: ["detective"],
+    tmdbGenres: ["mystery", "crime"],
+  },
+  investigation: {
+    searchTokens: ["investigation"],
+    tmdbGenres: ["mystery", "crime"],
+  },
+  noir: {
+    searchTokens: ["noir"],
+    tmdbGenres: ["mystery", "crime", "thriller"],
+  },
+  zombies: {
+    searchTokens: ["zombies"],
+    tmdbGenres: ["horror", "action"],
+  },
+  survival: {
+    searchTokens: ["survival"],
+    tmdbGenres: ["thriller", "action"],
+  },
+  dark: {
+    searchTokens: ["dark"],
+    tmdbGenres: ["thriller", "drama"],
+  },
+  gothic: {
+    searchTokens: ["gothic"],
+    tmdbGenres: ["horror", "fantasy"],
+  },
+  gore: {
+    searchTokens: ["gore"],
+    tmdbGenres: ["horror", "thriller"],
+  },
+  blood: {
+    searchTokens: ["blood"],
+    tmdbGenres: ["horror", "action"],
+  },
+
+  action: {
+    searchTokens: ["action"],
+    tmdbGenres: ["action"],
+  },
+  adventure: {
+    searchTokens: ["adventure"],
+    tmdbGenres: ["adventure"],
+  },
+  superhero: {
+    searchTokens: ["superhero"],
+    tmdbGenres: ["action", "fantasy"],
+  },
+  assassin: {
+    searchTokens: ["assassin"],
+    tmdbGenres: ["action", "crime"],
+  },
+  pirates: {
+    searchTokens: ["pirates"],
+    tmdbGenres: ["adventure", "action"],
+  },
+  western: {
+    searchTokens: ["western"],
+    tmdbGenres: ["western", "action", "drama"],
+  },
+  crime: {
+    searchTokens: ["crime"],
+    tmdbGenres: ["crime", "thriller"],
+  },
+  heist: {
+    searchTokens: ["heist"],
+    tmdbGenres: ["crime", "action"],
+  },
+  war: {
+    searchTokens: ["war"],
+    tmdbGenres: ["war", "action", "history"],
+  },
+  historical: {
+    searchTokens: ["historical"],
+    tmdbGenres: ["history", "drama"],
+  },
+  "world-war-ii": {
+    searchTokens: ["world-war-ii"],
+    tmdbGenres: ["war", "history", "drama"],
+  },
+  "world-war-i": {
+    searchTokens: ["world-war-i"],
+    tmdbGenres: ["war", "history", "drama"],
+  },
+  "cold-war": {
+    searchTokens: ["cold-war"],
+    tmdbGenres: ["thriller", "war", "history"],
+  },
+  military: {
+    searchTokens: ["military"],
+    tmdbGenres: ["war", "action"],
+  },
+  rome: {
+    searchTokens: ["rome"],
+    tmdbGenres: ["history", "action"],
+  },
+  dino: {
+    searchTokens: ["dino", "dinosaurs"],
+    tmdbGenres: ["adventure", "science-fiction"],
+  },
+  dinosaurs: {
+    searchTokens: ["dinosaurs"],
+    tmdbGenres: ["adventure", "science-fiction"],
+  },
+
+  political: {
+    searchTokens: ["political"],
+    tmdbGenres: ["drama", "thriller"],
+  },
+  drama: {
+    searchTokens: ["drama"],
+    tmdbGenres: ["drama"],
+  },
+  romance: {
+    searchTokens: ["romance"],
+    tmdbGenres: ["romance", "drama"],
+  },
+  comedy: {
+    searchTokens: ["comedy"],
+    tmdbGenres: ["comedy"],
+  },
+  satire: {
+    searchTokens: ["satire"],
+    tmdbGenres: ["comedy"],
+  },
+
+  anime: {
+    searchTokens: ["anime"],
+    tmdbGenres: ["animation", "fantasy"],
+  },
+  "martial-arts": {
+    searchTokens: ["martial-arts"],
+    tmdbGenres: ["action", "drama"],
+  },
+  samurai: {
+    searchTokens: ["samurai"],
+    tmdbGenres: ["action", "history"],
+  },
+  ninja: {
+    searchTokens: ["ninja"],
+    tmdbGenres: ["action", "thriller"],
+  },
+
+  documentary: {
+    searchTokens: ["documentary"],
+    tmdbGenres: ["documentary"],
+  },
+};
+
+const GENRE_TO_TMDB_GENRES: Record<string, string[]> = {
+  action: ["action"],
+  adventure: ["adventure"],
+  horror: ["horror", "thriller"],
+  fantasy: ["fantasy", "adventure"],
+  documentary: ["documentary"],
+};
 
 function unique(values: string[]) {
   return Array.from(new Set(values));
 }
 
-function takeUseful(values: string[], allowed: Set<string>, limit: number) {
-  return values.filter((value) => allowed.has(value)).slice(0, limit);
+function normalize(values: string[]) {
+  return values.map((value) => value.trim().toLowerCase()).filter(Boolean);
 }
 
-function takeFallbackTags(values: string[], limit: number) {
-  return values
-    .filter((value) => !IRRELEVANT_FALLBACK_TAGS.has(value))
-    .slice(0, limit);
+function cleanTags(tags: string[]) {
+  return normalize(tags).filter((tag) => !IRRELEVANT_TAGS.has(tag));
+}
+
+function cleanGenres(genres: string[]) {
+  return normalize(genres).filter(
+    (genre) => !IRRELEVANT_GENRES.has(genre) && USEFUL_GENRES.has(genre),
+  );
+}
+
+function scoreTheme(theme: string) {
+  if (STRONG_THEME_TAGS.has(theme)) return 10;
+  if (THEME_SIGNAL_MAP[theme]) return 4;
+  return 1;
+}
+
+function sortThemes(themes: string[]) {
+  return unique(themes).sort((a, b) => scoreTheme(b) - scoreTheme(a));
+}
+
+function buildGameTagTokens(profile: UserGameProfile) {
+  const weightedTags = new Map<string, number>();
+
+  for (const game of profile.sourceGames) {
+    for (const rawTag of game.tags) {
+      const tag = rawTag.trim().toLowerCase();
+
+      if (!tag || IRRELEVANT_TAGS.has(tag)) continue;
+
+      weightedTags.set(tag, (weightedTags.get(tag) ?? 0) + game.weight);
+    }
+  }
+
+  return Array.from(weightedTags.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag]) => tag)
+    .slice(0, 16);
+}
+
+function buildKeywordCandidates(
+  movieThemes: string[],
+  gameTagTokens: string[],
+) {
+  const themeTokens = movieThemes.flatMap((theme) => {
+    const config = THEME_SIGNAL_MAP[theme];
+    if (config) return config.searchTokens;
+    return [theme.replace(/-/g, " ")];
+  });
+
+  // inclui tags reais dos jogos para deixar a busca mais específica
+  return unique([
+    ...themeTokens,
+    ...gameTagTokens.map((tag) => tag.replace(/-/g, " ")),
+  ]).slice(0, 18);
+}
+
+function buildSearchTerms(keywordCandidates: string[], movieGenres: string[]) {
+  const [a = "", b = "", c = "", d = ""] = keywordCandidates;
+
+  return unique(
+    [
+      ...keywordCandidates.slice(0, 8),
+
+      a ? `${a} movie` : "",
+      a ? `${a} film` : "",
+
+      a && b ? `${a} ${b}` : "",
+      a && b ? `${a} ${b} movie` : "",
+
+      a && c ? `${a} ${c}` : "",
+      a && c ? `${a} ${c} movie` : "",
+
+      a && b && c ? `${a} ${b} ${c}` : "",
+      a && b && c ? `${a} ${b} ${c} movie` : "",
+
+      a && d ? `${a} ${d}` : "",
+      a && d ? `${a} ${d} movie` : "",
+
+      movieGenres[0] ? `${movieGenres[0]} movie` : "",
+    ].filter((value) => value.trim().length > 0),
+  ).slice(0, 20);
 }
 
 export function buildMovieSignals(profile: UserGameProfile): MovieSignals {
-  const tagThemes = takeUseful(profile.topTags, USEFUL_THEME_TAGS, 8);
-  const genreThemes = takeUseful(profile.topGenres, USEFUL_GENRES, 3);
+  const cleanedTags = cleanTags(profile.topTags);
+  const cleanedGenres = cleanGenres(profile.topGenres);
 
-  let movieThemes = unique([...tagThemes, ...genreThemes]).slice(0, 8);
+  const sortedThemes = sortThemes([...cleanedTags, ...cleanedGenres]);
+  const movieThemes = sortedThemes.slice(0, 10);
 
-  if (movieThemes.length < 5) {
-    movieThemes = unique([
-      ...movieThemes,
-      ...takeFallbackTags(profile.topTags, 6),
-    ]).slice(0, 8);
-  }
+  const movieGenres = unique([
+    ...movieThemes.flatMap(
+      (theme) => THEME_SIGNAL_MAP[theme]?.tmdbGenres ?? [],
+    ),
+    ...cleanedGenres.flatMap((genre) => GENRE_TO_TMDB_GENRES[genre] ?? []),
+  ]).slice(0, 8);
 
-  const movieGenres = unique(
-    movieThemes.flatMap((theme) => SIGNAL_TO_MOVIE_GENRES[theme] ?? []),
-  ).slice(0, 6);
+  const gameTagTokens = buildGameTagTokens(profile);
 
-  const searchTerms = unique(
-    [
-      movieThemes.slice(0, 3).join(" "),
-      movieThemes.slice(0, 4).join(" "),
-      movieThemes.slice(0, 5).join(" "),
-      `${movieThemes.slice(0, 2).join(" ")} movie`,
-      `${movieThemes.slice(0, 3).join(" ")} film`,
-      `${movieGenres.slice(0, 2).join(" ")} movie`,
-    ].filter((value) => value.trim().length > 0),
-  );
+  const keywordCandidates = buildKeywordCandidates(movieThemes, gameTagTokens);
+  const searchTerms = buildSearchTerms(keywordCandidates, movieGenres);
 
   return {
     movieThemes,
     movieGenres,
     searchTerms,
+    keywordCandidates,
   };
 }
